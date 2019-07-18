@@ -19,7 +19,10 @@ class Market {
     }
 
     fun summary(): List<SummaryItem> {
-        return theOrders.asSequence().map { SummaryItem(it.quantity, it.price) }.toList()
+        return theOrders.asSequence()
+            .map { SummaryItem(it.quantity, it.price) }
+            .toList()
+            .sortedBy { it.price }
     }
 }
 
@@ -52,10 +55,10 @@ class SilverBarsTests {
     }
 
     @Test
-    fun `user can register 2 buy orders of different prices and see them in the summary items`() {
+    fun `user can register 2 buy orders of different prices and see them in the summary items in the correct order`() {
         val market = Market()
-        market.register(buyOrder1)
         market.register(buyOrder2)
+        market.register(buyOrder1)
 
         expectThat(market.summary()).containsExactly(
             SummaryItem(9.2.kilo.gram, 303.toBigDecimal()),
