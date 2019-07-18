@@ -4,24 +4,22 @@ import org.junit.jupiter.api.Test
 import org.tenkiv.physikal.core.gram
 import org.tenkiv.physikal.core.kilo
 import strikt.api.expectThat
-import strikt.assertions.isEqualTo
+import strikt.assertions.containsExactly
 import tec.units.indriya.ComparableQuantity
 import java.math.BigDecimal
-import java.util.*
 import javax.measure.quantity.Mass
 
 enum class OrderType { BUY }
 
 class Market {
-    private var theOrder: Optional<Order> = Optional.empty()
+    private val theOrders: MutableList<Order> = mutableListOf()
 
     fun register(order: Order) {
-        theOrder = Optional.of(order)
+        theOrders.add(order)
     }
 
-    fun summary(): SummaryItem {
-        val order = theOrder.get()
-        return SummaryItem(order.quantity, order.price)
+    fun summary(): List<SummaryItem> {
+        return theOrders.asSequence().map { SummaryItem(it.quantity, it.price) }.toList()
     }
 }
 
@@ -33,6 +31,7 @@ data class Order(
     val quantity: ComparableQuantity<Mass>,
 
     val type: OrderType,
+
     // bigDecimal is being used to avoid double or float rounding errors.
     // Issues about precision equals will need to be tested i.e. 0.10 != 0.1
     val price: BigDecimal
@@ -42,11 +41,26 @@ data class Order(
 data class UserId(val id: String)
 
 class SilverBarsTests {
+    private val buyOrder1 = Order(UserId("user1"), 9.2.kilo.gram, OrderType.BUY, 303.toBigDecimal())
+    private val buyOrder2 = Order(UserId("user1"), 9.2.kilo.gram, OrderType.BUY, 304.toBigDecimal())
+
     @Test
     fun `user can register an order and see summary`() {
         val market = Market()
-        market.register(Order(UserId("user1"), 9.2.kilo.gram, OrderType.BUY, 303.toBigDecimal()))
-        expectThat(market.summary()).isEqualTo(SummaryItem(9.2.kilo.gram, 303.toBigDecimal()))
+        market.register(buyOrder1)
+        expectThat(market.summary()).containsExactly(SummaryItem(9.2.kilo.gram, 303.toBigDecimal()))
+    }
+
+    @Test
+    fun `user can register 2 buy orders of different prices and see them in the summary items`() {
+        val market = Market()
+        market.register(buyOrder1)
+        market.register(buyOrder2)
+
+        expectThat(market.summary()).containsExactly(
+            SummaryItem(9.2.kilo.gram, 303.toBigDecimal()),
+            SummaryItem(9.2.kilo.gram, 304.toBigDecimal())
+        )
     }
 }
 
