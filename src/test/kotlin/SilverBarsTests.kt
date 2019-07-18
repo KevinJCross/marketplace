@@ -3,14 +3,26 @@ package org.kware.silverbars
 import org.junit.jupiter.api.Test
 import org.tenkiv.physikal.core.gram
 import org.tenkiv.physikal.core.kilo
+import strikt.api.expectThat
+import strikt.assertions.isEqualTo
 import tec.units.indriya.ComparableQuantity
 import java.math.BigDecimal
+import java.util.*
 import javax.measure.quantity.Mass
 
 enum class OrderType { BUY }
 
 class Market {
-    fun register(order: Order) {}
+    private var theOrder: Optional<Order> = Optional.empty()
+
+    fun register(order: Order) {
+        theOrder = Optional.of(order)
+    }
+
+    fun summary(): SummaryItem {
+        val order = theOrder.get()
+        return SummaryItem(order.quantity, order.price)
+    }
 }
 
 data class Order(
@@ -31,7 +43,11 @@ data class UserId(val id: String)
 
 class SilverBarsTests {
     @Test
-    fun `user can register an order`() {
-        Market().register(Order(UserId("user1"), 9.2.kilo.gram, OrderType.BUY, 303.toBigDecimal()))
+    fun `user can register an order and see summary`() {
+        val market = Market()
+        market.register(Order(UserId("user1"), 9.2.kilo.gram, OrderType.BUY, 303.toBigDecimal()))
+        expectThat(market.summary()).isEqualTo(SummaryItem(9.2.kilo.gram, 303.toBigDecimal()))
     }
 }
+
+data class SummaryItem(val quantity: ComparableQuantity<Mass>, val price: BigDecimal)
