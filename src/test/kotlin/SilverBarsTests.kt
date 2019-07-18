@@ -7,6 +7,7 @@ import org.tenkiv.physikal.core.plus
 import strikt.api.expectThat
 import strikt.assertions.containsExactly
 import tec.units.indriya.ComparableQuantity
+import java.lang.ref.WeakReference
 import java.math.BigDecimal
 import javax.measure.quantity.Mass
 
@@ -19,8 +20,9 @@ enum class OrderType(val sortOrder: Comparator<BigDecimal>) {
 class Market {
     private val theOrders: MutableList<Order> = mutableListOf()
 
-    fun register(order: Order) {
+    fun register(order: Order): OrderReference {
         theOrders.add(order)
+        return OrderReference(WeakReference(order), WeakReference(this))
     }
 
     // could have used a few different mechanisms represent BUY and SELL in the summary.
@@ -43,13 +45,15 @@ class Market {
             .toSortedMap(type.sortOrder)
             .map { SummaryItem(it.value.map { it.quantity }.reduce { a, b -> a + b }, it.key) }
     }
+
+    class OrderReference(private val orderRef: WeakReference<Order>, private val market: WeakReference<Market>) {
+        fun cancel() = orderRef.get()?.let { order -> market.get()?.run { remove(order) } }
+    }
+
+    private fun remove(order: Order) = theOrders.remove(order)
 }
 
-data class SummaryItem(val quantity: ComparableQuantity<Mass>, val price: BigDecimal) {
-    companion object {
-        fun of(order: Order): SummaryItem = SummaryItem(order.quantity, order.price)
-    }
-}
+data class SummaryItem(val quantity: ComparableQuantity<Mass>, val price: BigDecimal)
 
 data class Order(
     val userId: UserId,
@@ -68,44 +72,52 @@ data class Order(
 // DDD class to avoid aliasing string so it actually is type safe
 data class UserId(val id: String)
 
+fun Order.toSummary() = SummaryItem(this.quantity, this.price)
+
 class SilverBarsTests {
     private val buyOrder1 = Order(UserId("user1"), 9.2.kilo.gram, OrderType.BUY, 303.toBigDecimal())
     private val buyOrder2 = Order(UserId("user1"), 9.2.kilo.gram, OrderType.BUY, 304.toBigDecimal())
 
     private val sellOrder1 = Order(UserId("user1"), 9.2.kilo.gram, OrderType.SELL, 303.toBigDecimal())
     private val sellOrder2 = Order(UserId("user1"), 9.2.kilo.gram, OrderType.SELL, 304.toBigDecimal())
+    private val sellOrder3 = Order(UserId("user1"), 2.kilo.gram, OrderType.SELL, 305.toBigDecimal())
 
     @Test
     fun `user can register an order and see summary`() {
         val market = Market()
         market.register(buyOrder1)
+
         expectThat(market.summary()[OrderType.BUY].orEmpty())
             .containsExactly(SummaryItem(9.2.kilo.gram, 303.toBigDecimal()))
     }
 
     @Test
     fun `user can register 2 buy orders of different prices and see them in the summary items in the correct order`() {
-        val market = Market()
-        market.register(buyOrder2)
-        market.register(buyOrder1)
+        val market = with(Market()) {
+            register(buyOrder2)
+            register(buyOrder1)
+            this
+        }
 
         expectThat(market.summary()[OrderType.BUY].orEmpty())
             .containsExactly(
-                SummaryItem(9.2.kilo.gram, 303.toBigDecimal()),
-                SummaryItem(9.2.kilo.gram, 304.toBigDecimal())
+                buyOrder1.toSummary(),
+                buyOrder2.toSummary()
             )
     }
 
     @Test
     fun `user can register 2 sell orders of different prices and see them in the summary in the correct order`() {
-        val market = Market()
-        market.register(sellOrder1)
-        market.register(sellOrder2)
+        val market = with(Market()) {
+            register(sellOrder1)
+            register(sellOrder2)
+            this
+        }
 
         expectThat(market.summary()[OrderType.SELL].orEmpty())
             .containsExactly(
-                SummaryItem(9.2.kilo.gram, 304.toBigDecimal()),
-                SummaryItem(9.2.kilo.gram, 303.toBigDecimal())
+                sellOrder2.toSummary(),
+                sellOrder1.toSummary()
             )
     }
 
@@ -119,7 +131,25 @@ class SilverBarsTests {
         expectThat(market.summary()[OrderType.SELL].orEmpty())
             .containsExactly(
                 SummaryItem(18.4.kilo.gram, 304.toBigDecimal()),
-                SummaryItem(9.2.kilo.gram, 303.toBigDecimal())
+                sellOrder1.toSummary()
+            )
+    }
+
+    @Test
+    fun `the user can cancel an order`() {
+        val market = with(Market()) {
+            register(sellOrder3)
+            register(sellOrder1)
+            this
+        }
+        val orderToCancel = market.register(sellOrder2)
+
+        orderToCancel.cancel()
+
+        expectThat(market.summary()[OrderType.SELL].orEmpty())
+            .containsExactly(
+                sellOrder3.toSummary(),
+                sellOrder1.toSummary()
             )
     }
 }
