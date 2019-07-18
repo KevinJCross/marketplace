@@ -61,11 +61,7 @@ data class Order(
     // JSR quantity types used to avoid using conversions kg->g lb->kg ect.
     // and add type safety i.e 3.kilo.meter will not compile.
     val quantity: ComparableQuantity<Mass>,
-
     val type: OrderType,
-
-    // bigDecimal is being used to avoid double or float rounding errors.
-    // Issues about precision equals will need to be tested i.e. 0.10 != 0.1
     val price: BigDecimal
 )
 
@@ -75,12 +71,14 @@ data class UserId(val id: String)
 fun Order.toSummary() = SummaryItem(this.quantity, this.price)
 
 class SilverBarsTests {
-    private val buyOrder1 = Order(UserId("user1"), 9.2.kilo.gram, OrderType.BUY, 303.toBigDecimal())
-    private val buyOrder2 = Order(UserId("user1"), 9.2.kilo.gram, OrderType.BUY, 304.toBigDecimal())
+    private val userId = UserId("user1")
 
-    private val sellOrder1 = Order(UserId("user1"), 9.2.kilo.gram, OrderType.SELL, 303.toBigDecimal())
-    private val sellOrder2 = Order(UserId("user1"), 9.2.kilo.gram, OrderType.SELL, 304.toBigDecimal())
-    private val sellOrder3 = Order(UserId("user1"), 2.kilo.gram, OrderType.SELL, 305.toBigDecimal())
+    private val buyOrder1 = Order(userId, 9.2.kilo.gram, OrderType.BUY, 303.toBigDecimal())
+    private val buyOrder2 = Order(userId, 9.2.kilo.gram, OrderType.BUY, 304.toBigDecimal())
+
+    private val sellOrder1 = Order(userId, 9.2.kilo.gram, OrderType.SELL, 303.toBigDecimal())
+    private val sellOrder2 = Order(userId, 9.2.kilo.gram, OrderType.SELL, 304.toBigDecimal())
+    private val sellOrder3 = Order(userId, 2.kilo.gram, OrderType.SELL, 305.toBigDecimal())
 
     @Test
     fun `user can register an order and see summary`() {
@@ -132,6 +130,19 @@ class SilverBarsTests {
             .containsExactly(
                 SummaryItem(18.4.kilo.gram, 304.toBigDecimal()),
                 sellOrder1.toSummary()
+            )
+    }
+
+    @Test
+    fun `user can specify the same price with different precisions and it will merge`() {
+        val market = with(Market()) {
+            register(Order(userId, 2.kilo.gram, OrderType.BUY, BigDecimal(0.00500)))
+            register(Order(userId, 2.kilo.gram, OrderType.BUY, BigDecimal(0.005)))
+            this
+        }
+        expectThat(market.summary()[OrderType.BUY].orEmpty())
+            .containsExactly(
+                SummaryItem(4.kilo.gram, BigDecimal(0.005))
             )
     }
 
