@@ -3,15 +3,17 @@ package org.kware.silverbars
 import org.junit.jupiter.api.Test
 import org.tenkiv.physikal.core.gram
 import org.tenkiv.physikal.core.kilo
+import org.tenkiv.physikal.core.plus
 import strikt.api.expectThat
 import strikt.assertions.containsExactly
 import tec.units.indriya.ComparableQuantity
 import java.math.BigDecimal
 import javax.measure.quantity.Mass
 
-enum class OrderType(val sortOrder: (List<Order>) -> List<Order>) {
-    BUY({ it.sortedBy { order -> order.price } }),
-    SELL({ it.sortedByDescending { order -> order.price } })
+// Ive added the comparators to the Type because there will always be 1:1 and require a sort order
+enum class OrderType(val sortOrder: Comparator<BigDecimal>) {
+    BUY(Comparator<BigDecimal> { a, b -> a.compareTo(b) }),
+    SELL(Comparator<BigDecimal> { a, b -> b.compareTo(a) })
 }
 
 class Market {
@@ -35,8 +37,12 @@ class Market {
             .toMap()
     }
 
-    private fun summarise(type: OrderType, list: List<Order>): List<SummaryItem> =
-        type.sortOrder(list).map { SummaryItem.of(it) }.toList()
+    private fun summarise(type: OrderType, list: List<Order>): List<SummaryItem> {
+        return list
+            .groupBy { it.price }
+            .toSortedMap(type.sortOrder)
+            .map { SummaryItem(it.value.map { it.quantity }.reduce { a, b -> a + b }, it.key) }
+    }
 }
 
 data class SummaryItem(val quantity: ComparableQuantity<Mass>, val price: BigDecimal) {
@@ -99,6 +105,20 @@ class SilverBarsTests {
         expectThat(market.summary()[OrderType.SELL].orEmpty())
             .containsExactly(
                 SummaryItem(9.2.kilo.gram, 304.toBigDecimal()),
+                SummaryItem(9.2.kilo.gram, 303.toBigDecimal())
+            )
+    }
+
+    @Test
+    fun `user can register 3 sell orders and 2 orders of same price and see them merged in the summary`() {
+        val market = Market()
+        market.register(sellOrder1)
+        market.register(sellOrder2)
+        market.register(sellOrder2)
+
+        expectThat(market.summary()[OrderType.SELL].orEmpty())
+            .containsExactly(
+                SummaryItem(18.4.kilo.gram, 304.toBigDecimal()),
                 SummaryItem(9.2.kilo.gram, 303.toBigDecimal())
             )
     }
